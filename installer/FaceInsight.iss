@@ -1,7 +1,7 @@
 [Setup]
 AppId={{7A3C23A8-3D8D-4B24-9B77-1A03B4A8B6F1}
 AppName=人脸颜值数据洞察
-AppVersion=1.0.0
+AppVersion=0.1.0
 DefaultDirName={localappdata}\FaceInsight
 DefaultGroupName=人脸颜值数据洞察
 OutputDir=output
