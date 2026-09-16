@@ -1,11 +1,43 @@
 from __future__ import annotations
 
+import os
 import sqlite3
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
 
-DEFAULT_DB_PATH = Path("beauty_analysis.db")
+def get_default_db_path() -> Path:
+    """返回当前 Windows 用户自己的本地数据库路径。"""
+    override = os.getenv("FACEINSIGHT_DATA_DIR")
+    if override:
+        return Path(override).expanduser().resolve() / "beauty_analysis.db"
+
+    local_app_data = os.getenv("LOCALAPPDATA")
+    if local_app_data:
+        return Path(local_app_data).resolve() / "FaceBeautyAnalysisSystem" / "beauty_analysis.db"
+    return Path.home() / ".faceinsight" / "beauty_analysis.db"
+
+
+DEFAULT_DB_PATH = get_default_db_path()
+
+
+def remove_legacy_databases() -> list[Path]:
+    """删除旧版本放在程序目录中的共享数据库，避免新用户看到旧记录。"""
+    candidates = [Path.cwd() / "beauty_analysis.db"]
+    if getattr(sys, "frozen", False):
+        candidates.append(Path(sys.executable).resolve().parent / "beauty_analysis.db")
+
+    removed: list[Path] = []
+    for path in dict.fromkeys(candidate.resolve() for candidate in candidates):
+        if path == DEFAULT_DB_PATH.resolve() or not path.exists():
+            continue
+        try:
+            path.unlink()
+            removed.append(path)
+        except OSError:
+            pass
+    return removed
 
 
 @dataclass(frozen=True)
@@ -17,6 +49,8 @@ class AnalysisRecord:
 
 
 def connect(db_path: str | Path = DEFAULT_DB_PATH) -> sqlite3.Connection:
+    if str(db_path) != ":memory:":
+        Path(db_path).expanduser().resolve().parent.mkdir(parents=True, exist_ok=True)
     return sqlite3.connect(db_path)
 
 

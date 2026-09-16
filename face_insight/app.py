@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import ctypes
 import csv
 import os
 import queue
+import sys
 import threading
 from pathlib import Path
 
@@ -10,10 +12,24 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
 from .charts import save_history_screen, save_score_chart
-from .config import load_baidu_config
+from .config import (
+    BaiduConfig,
+    ConfigError,
+    get_local_config_path,
+    load_baidu_config,
+    prepare_first_run,
+    save_baidu_config,
+)
 from .crawler import crawl_images, list_images
-from .face_analysis import FaceAnalyzer, aggregate_scores
-from .storage import calculate_average, connect, create_table, fetch_history, save_analysis
+from .face_analysis import FaceAnalyzer, aggregate_scores, verify_baidu_config
+from .storage import (
+    calculate_average,
+    connect,
+    create_table,
+    fetch_history,
+    remove_legacy_databases,
+    save_analysis,
+)
 
 
 BG = "#0d1220"
@@ -29,6 +45,30 @@ DANGER = "#ff7043"
 SUCCESS = "#66bb6a"
 
 
+def enable_high_dpi() -> int:
+    """启用 Windows DPI 感知并返回当前系统 DPI。"""
+    if sys.platform != "win32":
+        return 96
+
+    user32 = ctypes.windll.user32
+    try:
+        # Per-monitor DPI aware v2 for Windows 10/11.
+        user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))
+    except (AttributeError, OSError):
+        try:
+            ctypes.windll.shcore.SetProcessDpiAwareness(2)
+        except (AttributeError, OSError):
+            try:
+                user32.SetProcessDPIAware()
+            except (AttributeError, OSError):
+                pass
+
+    try:
+        return int(user32.GetDpiForSystem())
+    except (AttributeError, OSError):
+        return 96
+
+
 def open_local_file(path: Path):
     """Windows 下交给系统默认程序打开，避免浏览器把本地文件当新标签处理。"""
     target = path.resolve()
@@ -37,24 +77,45 @@ def open_local_file(path: Path):
     os.startfile(str(target))
 
 
-class FaceInsightApp(tk.Tk):
+class FaceBeautyAnalysisApp(tk.Tk):
     def __init__(self):
+        system_dpi = enable_high_dpi()
         super().__init__()
-        self.title("FaceInsight · 人脸颜值数据洞察")
-        self.geometry("1000x740")
-        self.minsize(840, 640)
+        self.ui_scale = max(1.0, system_dpi / 96.0)
+        self.tk.call("tk", "scaling", system_dpi / 72.0)
+        self.title("人脸颜值数据分析系统")
+        self.geometry(
+            f"{self._scaled(1000)}x{min(self._scaled(740), int(self.winfo_screenheight() * 0.92))}"
+        )
+        self.minsize(
+            min(self._scaled(840), int(self.winfo_screenwidth() * 0.90)),
+            min(self._scaled(640), int(self.winfo_screenheight() * 0.85)),
+        )
         self.configure(background=BG)
 
         self.worker: threading.Thread | None = None
         self.events: queue.Queue[dict] = queue.Queue()
+        self.config_test_events: queue.Queue[dict] = queue.Queue()
+        self.config_dialog: tk.Toplevel | None = None
         self.latest_chart: Path | None = None
         self.history_screen: Path | None = None
         self.local_folder_var = tk.StringVar()
         self.source_var = tk.StringVar(value="Bing 爬虫")
 
+        first_run = prepare_first_run()
+        removed_databases = remove_legacy_databases()
         self._setup_style()
         self._build_ui()
+        if first_run:
+            self.log("首次使用已进入初始化模式，请手动填写并保存三码。", "muted")
+        if removed_databases:
+            self.log("已清除旧版共享历史记录，当前用户将从空白历史开始。", "muted")
         self.after(120, self._poll_worker_events)
+        self.after(120, self._poll_config_test_events)
+        self.after(350, self._open_config_if_missing)
+
+    def _scaled(self, value: int) -> int:
+        return max(1, round(value * self.ui_scale))
 
     def _setup_style(self):
         style = ttk.Style(self)
@@ -186,6 +247,20 @@ class FaceInsightApp(tk.Tk):
             font=("Microsoft YaHei UI", 9, "bold"),
             padding=(10, 4),
         )
+        style.configure(
+            "ChipMissing.TLabel",
+            background=PANEL_LIGHT,
+            foreground=DANGER,
+            font=("Microsoft YaHei UI", 9, "bold"),
+            padding=(10, 4),
+        )
+        style.configure(
+            "ChipReady.TLabel",
+            background=PANEL_LIGHT,
+            foreground=SUCCESS,
+            font=("Microsoft YaHei UI", 9, "bold"),
+            padding=(10, 4),
+        )
 
     def _build_ui(self):
         container = ttk.Frame(self, padding=(28, 22, 28, 18))
@@ -196,14 +271,22 @@ class FaceInsightApp(tk.Tk):
         header.columnconfigure(0, weight=1)
         brand = ttk.Frame(header)
         brand.grid(row=0, column=0, sticky="w")
-        ttk.Label(brand, text="FaceInsight", style="Brand.TLabel").pack(anchor="w")
+        ttk.Label(brand, text="人脸颜值数据分析系统", style="Brand.TLabel").pack(anchor="w")
         ttk.Label(
             brand,
             text="icrawler 爬取 · 百度人脸检测 · SQLite 留存 · pyecharts 可视化",
             style="Sub.TLabel",
         ).pack(anchor="w", pady=(2, 0))
+        ttk.Button(
+            header,
+            text="三码配置",
+            style="Ghost.TButton",
+            command=self.open_config_dialog,
+        ).grid(row=0, column=1, sticky="ne", padx=(12, 0))
+        self.config_chip = ttk.Label(header, text="● 三码未配置", style="ChipMissing.TLabel")
+        self.config_chip.grid(row=0, column=2, sticky="ne", padx=(10, 0))
         self.status_chip = ttk.Label(header, text="● 就绪", style="ChipIdle.TLabel")
-        self.status_chip.grid(row=0, column=1, sticky="ne", padx=(12, 0))
+        self.status_chip.grid(row=0, column=3, sticky="ne", padx=(10, 0))
 
         input_card = ttk.Frame(container, style="Card.TFrame", padding=18)
         input_card.pack(fill="x", pady=(18, 0))
@@ -303,6 +386,7 @@ class FaceInsightApp(tk.Tk):
         self.log_text.tag_configure("muted", foreground=MUTED)
 
         self.refresh_history()
+        self._refresh_config_status()
 
     def log(self, message: str, tag: str | None = None):
         self.log_text.configure(state="normal")
@@ -318,7 +402,247 @@ class FaceInsightApp(tk.Tk):
             self.progress.configure(value=0)
             self.status_chip.configure(text="● 分析中", style="ChipBusy.TLabel")
         else:
+            self._refresh_config_status()
+
+    def _refresh_config_status(self) -> BaiduConfig | None:
+        try:
+            config = load_baidu_config()
+        except ConfigError:
+            self.config_chip.configure(text="● 三码未配置", style="ChipMissing.TLabel")
+            if not self.worker or not self.worker.is_alive():
+                self.status_chip.configure(text="● 待配置", style="ChipMissing.TLabel")
+            return None
+        self.config_chip.configure(text="● 三码已配置", style="ChipReady.TLabel")
+        if not self.worker or not self.worker.is_alive():
             self.status_chip.configure(text="● 就绪", style="ChipIdle.TLabel")
+        return config
+
+    def _open_config_if_missing(self):
+        if self.config_dialog and self.config_dialog.winfo_exists():
+            return
+        if self._refresh_config_status() is None:
+            self.log("首次使用请先在“三码配置”中保存 APP_ID、API_KEY 和 SECRET_KEY。", "muted")
+            self.open_config_dialog(first_run=True)
+
+    def open_config_dialog(self, first_run: bool = False):
+        if self.config_dialog and self.config_dialog.winfo_exists():
+            self.config_dialog.lift()
+            self.config_dialog.focus_force()
+            return
+
+        try:
+            current = load_baidu_config()
+            startup_message = "已读取本地三码配置，可直接修改并重新保存。"
+        except ConfigError as exc:
+            current = BaiduConfig("", "", "")
+            startup_message = str(exc) if not first_run else "首次使用请填写百度智能云应用三码。"
+
+        dialog = tk.Toplevel(self)
+        dialog.title("人脸颜值数据分析系统 · 三码配置")
+        dialog_width = min(self._scaled(700), int(self.winfo_screenwidth() * 0.90))
+        dialog_height = min(self._scaled(620), int(self.winfo_screenheight() * 0.88))
+        dialog.geometry(f"{dialog_width}x{dialog_height}")
+        dialog.minsize(
+            min(self._scaled(640), dialog_width),
+            min(self._scaled(580), dialog_height),
+        )
+        dialog.configure(background=BG)
+        dialog.transient(self)
+        dialog.protocol("WM_DELETE_WINDOW", self._close_config_dialog)
+        self.config_dialog = dialog
+
+        self.config_app_id_var = tk.StringVar(value=current.app_id)
+        self.config_api_key_var = tk.StringVar(value=current.api_key)
+        self.config_secret_key_var = tk.StringVar(value=current.secret_key)
+        self.show_secrets_var = tk.BooleanVar(value=False)
+        self.config_test_status_var = tk.StringVar(value=startup_message)
+
+        card = ttk.Frame(dialog, style="Card.TFrame", padding=18)
+        card.pack(fill="both", expand=True, padx=14, pady=14)
+        card.columnconfigure(1, weight=1)
+
+        tk.Label(
+            card,
+            text="百度智能云三码配置",
+            background=PANEL,
+            foreground=TEXT,
+            font=("Microsoft YaHei UI", 18, "bold"),
+        ).grid(row=0, column=0, columnspan=3, sticky="w", pady=(0, 14))
+
+        ttk.Label(card, text="APP_ID", style="Card.TLabel").grid(
+            row=1, column=0, sticky="w", padx=(0, 12), pady=4
+        )
+        self.config_app_id_entry = ttk.Entry(card, textvariable=self.config_app_id_var)
+        self.config_app_id_entry.grid(row=1, column=1, columnspan=2, sticky="ew", pady=4)
+
+        ttk.Label(card, text="API_KEY", style="Card.TLabel").grid(
+            row=2, column=0, sticky="w", padx=(0, 12), pady=4
+        )
+        self.config_api_key_entry = ttk.Entry(
+            card, textvariable=self.config_api_key_var, show="*"
+        )
+        self.config_api_key_entry.grid(row=2, column=1, columnspan=2, sticky="ew", pady=4)
+
+        ttk.Label(card, text="SECRET_KEY", style="Card.TLabel").grid(
+            row=3, column=0, sticky="w", padx=(0, 12), pady=4
+        )
+        self.config_secret_key_entry = ttk.Entry(
+            card, textvariable=self.config_secret_key_var, show="*"
+        )
+        self.config_secret_key_entry.grid(row=3, column=1, columnspan=2, sticky="ew", pady=4)
+
+        tk.Checkbutton(
+            card,
+            text="显示密钥",
+            variable=self.show_secrets_var,
+            command=self._toggle_secret_visibility,
+            background=PANEL,
+            foreground=TEXT,
+            activebackground=PANEL,
+            activeforeground=TEXT,
+            selectcolor=PANEL_LIGHT,
+            highlightthickness=0,
+            font=("Microsoft YaHei UI", 10),
+        ).grid(row=4, column=1, sticky="w", pady=(2, 8))
+
+        path_text = str(get_local_config_path())
+        ttk.Label(card, text=f"保存位置：{path_text}", style="Muted.TLabel", wraplength=570).grid(
+            row=5, column=0, columnspan=3, sticky="w", pady=(0, 8)
+        )
+        ttk.Label(
+            card,
+            textvariable=self.config_test_status_var,
+            style="Card.TLabel",
+            wraplength=570,
+        ).grid(row=6, column=0, columnspan=3, sticky="w", pady=(0, 10))
+
+        buttons = ttk.Frame(card, style="Card.TFrame")
+        buttons.grid(row=7, column=0, columnspan=3, sticky="e")
+        self.config_cancel_button = ttk.Button(
+            buttons, text="取消", style="Ghost.TButton", command=self._close_config_dialog
+        )
+        self.config_cancel_button.pack(side="right")
+        self.config_test_button = ttk.Button(
+            buttons, text="保存并验证", style="Ghost.TButton", command=self.test_config_from_dialog
+        )
+        self.config_test_button.pack(side="right", padx=(0, 10))
+        self.config_save_button = ttk.Button(
+            buttons, text="保存配置", style="Accent.TButton", command=self.save_config_from_dialog
+        )
+        self.config_save_button.pack(side="right", padx=(0, 10))
+
+        dialog.update_idletasks()
+        x = self.winfo_rootx() + max(20, (self.winfo_width() - dialog.winfo_width()) // 2)
+        y = self.winfo_rooty() + max(20, (self.winfo_height() - dialog.winfo_height()) // 3)
+        dialog.geometry(f"+{x}+{y}")
+        dialog.grab_set()
+        self.config_app_id_entry.focus_set()
+
+    def _toggle_secret_visibility(self):
+        marker = "" if self.show_secrets_var.get() else "*"
+        self.config_api_key_entry.configure(show=marker)
+        self.config_secret_key_entry.configure(show=marker)
+
+    def _config_from_dialog(self) -> BaiduConfig:
+        config = BaiduConfig(
+            self.config_app_id_var.get().strip(),
+            self.config_api_key_var.get().strip(),
+            self.config_secret_key_var.get().strip(),
+        )
+        missing = [
+            label
+            for label, value in (
+                ("APP_ID", config.app_id),
+                ("API_KEY", config.api_key),
+                ("SECRET_KEY", config.secret_key),
+            )
+            if not value
+        ]
+        if missing:
+            raise ValueError("请完整填写：" + "、".join(missing))
+        return config
+
+    def save_config_from_dialog(self):
+        try:
+            config = self._config_from_dialog()
+            target = save_baidu_config(config)
+        except (OSError, ValueError) as exc:
+            messagebox.showwarning("配置未保存", str(exc), parent=self.config_dialog)
+            return
+
+        self._refresh_config_status()
+        self.config_test_status_var.set(f"配置已保存：{target}")
+        self.log(f"三码配置已保存：{target}", "success")
+        messagebox.showinfo(
+            "配置成功",
+            "三码已保存，现在可以直接开始分析。",
+            parent=self.config_dialog,
+        )
+        self._close_config_dialog()
+
+    def test_config_from_dialog(self):
+        try:
+            config = self._config_from_dialog()
+            target = save_baidu_config(config)
+        except (OSError, ValueError) as exc:
+            messagebox.showwarning("配置未保存", str(exc), parent=self.config_dialog)
+            return
+
+        self._refresh_config_status()
+        self.config_test_status_var.set(f"配置已保存：{target}\n正在验证三码，请稍候...")
+        self.config_save_button.configure(state="disabled")
+        self.config_test_button.configure(state="disabled")
+        self.config_cancel_button.configure(state="disabled")
+        threading.Thread(
+            target=self._config_test_worker,
+            args=(config,),
+            daemon=True,
+        ).start()
+
+    def _config_test_worker(self, config: BaiduConfig):
+        try:
+            verify_baidu_config(config)
+            self.config_test_events.put({"ok": True, "message": "验证成功，三码可用。"})
+        except Exception as exc:
+            self.config_test_events.put({"ok": False, "message": str(exc)})
+
+    def _poll_config_test_events(self):
+        try:
+            while True:
+                event = self.config_test_events.get_nowait()
+                if self.config_dialog and self.config_dialog.winfo_exists():
+                    self.config_save_button.configure(state="normal")
+                    self.config_test_button.configure(state="normal")
+                    self.config_cancel_button.configure(state="normal")
+                    self.config_test_status_var.set(event["message"])
+                    if event["ok"]:
+                        self.log("三码验证成功，已可直接运行分析。", "success")
+                        messagebox.showinfo(
+                            "验证成功",
+                            "三码验证成功，程序已可以正常调用百度人脸检测。",
+                            parent=self.config_dialog,
+                        )
+                        self._close_config_dialog()
+                    else:
+                        self.log(event["message"], "error")
+                        messagebox.showerror(
+                            "验证失败",
+                            event["message"],
+                            parent=self.config_dialog,
+                        )
+        except queue.Empty:
+            pass
+        self.after(120, self._poll_config_test_events)
+
+    def _close_config_dialog(self):
+        dialog = self.config_dialog
+        if dialog and dialog.winfo_exists():
+            try:
+                dialog.grab_release()
+            except tk.TclError:
+                pass
+            dialog.destroy()
+        self.config_dialog = None
 
     def _toggle_source_mode(self):
         is_local = self.source_var.get() == "本地文件夹"
@@ -333,6 +657,13 @@ class FaceInsightApp(tk.Tk):
 
     def start_analysis(self):
         if self.worker and self.worker.is_alive():
+            return
+        if self._refresh_config_status() is None:
+            messagebox.showinfo(
+                "请先配置三码",
+                "请先填写并保存百度智能云 APP_ID、API_KEY 和 SECRET_KEY。",
+            )
+            self.open_config_dialog(first_run=True)
             return
         try:
             keyword = self.keyword_var.get().strip()
@@ -534,5 +865,5 @@ class FaceInsightApp(tk.Tk):
 
 
 def main():
-    app = FaceInsightApp()
+    app = FaceBeautyAnalysisApp()
     app.mainloop()

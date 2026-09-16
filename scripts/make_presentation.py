@@ -2,61 +2,107 @@ from pathlib import Path
 
 from pptx import Presentation
 from pptx.dml.color import RGBColor
-from pptx.enum.text import PP_ALIGN
+from pptx.enum.shapes import MSO_SHAPE
 from pptx.util import Inches, Pt
 
 
-BG = RGBColor(18, 24, 38)
-ACCENT = RGBColor(80, 227, 194)
-ACCENT2 = RGBColor(255, 176, 32)
-TEXT = RGBColor(240, 244, 248)
-MUTED = RGBColor(181, 193, 205)
+BG = RGBColor(0x0D, 0x12, 0x20)
+PANEL = RGBColor(0x15, 0x1D, 0x30)
+PANEL_LIGHT = RGBColor(0x1D, 0x28, 0x42)
+ACCENT = RGBColor(0x00, 0xE5, 0xC3)
+BLUE = RGBColor(0x29, 0xB6, 0xF6)
+YELLOW = RGBColor(0xFF, 0xD5, 0x4F)
+ORANGE = RGBColor(0xFF, 0x70, 0x43)
+TEXT = RGBColor(0xE8, 0xEE, 0xF6)
+MUTED = RGBColor(0x8F, 0xA1, 0xB8)
 
 
 def add_slide(prs: Presentation, title: str):
     slide = prs.slides.add_slide(prs.slide_layouts[6])
-    background = slide.shapes.add_shape(1, 0, 0, prs.slide_width, prs.slide_height)
-    background.fill.solid()
-    background.fill.fore_color.rgb = BG
-    background.line.fill.background()
+    bg = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, 0, 0, prs.slide_width, prs.slide_height)
+    bg.fill.solid()
+    bg.fill.fore_color.rgb = BG
+    bg.line.fill.background()
 
-    accent = slide.shapes.add_shape(1, Inches(0.55), Inches(0.68), Inches(0.18), Inches(0.45))
-    accent.fill.solid()
-    accent.fill.fore_color.rgb = ACCENT
-    accent.line.fill.background()
+    bar = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(0.55), Inches(0.62), Inches(0.16), Inches(0.5))
+    bar.fill.solid()
+    bar.fill.fore_color.rgb = ACCENT
+    bar.line.fill.background()
 
-    title_box = slide.shapes.add_textbox(Inches(0.95), Inches(0.52), Inches(11), Inches(0.8))
-    title_frame = title_box.text_frame
-    title_frame.text = title
-    title_frame.margin_left = 0
-    title_frame.word_wrap = True
-    paragraph = title_frame.paragraphs[0]
-    paragraph.font.size = Pt(30)
-    paragraph.font.bold = True
-    paragraph.font.color.rgb = TEXT
+    box = slide.shapes.add_textbox(Inches(0.92), Inches(0.48), Inches(11.6), Inches(0.8))
+    frame = box.text_frame
+    frame.word_wrap = True
+    frame.text = title
+    frame.paragraphs[0].font.size = Pt(28)
+    frame.paragraphs[0].font.bold = True
+    frame.paragraphs[0].font.color.rgb = TEXT
     return slide
 
 
-def add_body(slide, lines, top=1.6, left=0.95, width=11.1, height=5.4, size=18):
+def add_footer(slide, section: str):
+    box = slide.shapes.add_textbox(Inches(0.92), Inches(6.95), Inches(11.5), Inches(0.4))
+    frame = box.text_frame
+    frame.text = section
+    frame.paragraphs[0].font.size = Pt(12)
+    frame.paragraphs[0].font.color.rgb = MUTED
+
+
+def add_bullets(slide, lines, top=1.55, left=0.92, width=11.5, height=5.2, size=18):
     box = slide.shapes.add_textbox(Inches(left), Inches(top), Inches(width), Inches(height))
-    text_frame = box.text_frame
-    text_frame.word_wrap = True
+    frame = box.text_frame
+    frame.word_wrap = True
     for index, line in enumerate(lines):
-        paragraph = text_frame.paragraphs[0] if index == 0 else text_frame.add_paragraph()
+        paragraph = frame.paragraphs[0] if index == 0 else frame.add_paragraph()
         paragraph.text = line
         paragraph.font.size = Pt(size)
-        paragraph.font.color.rgb = TEXT if not line.startswith(("    ", "·")) else MUTED
+        paragraph.font.color.rgb = TEXT
         paragraph.space_after = Pt(10)
     return box
 
 
-def add_footer(slide, text):
-    box = slide.shapes.add_textbox(Inches(0.95), Inches(6.65), Inches(11), Inches(0.4))
-    text_frame = box.text_frame
-    text_frame.text = text
-    paragraph = text_frame.paragraphs[0]
-    paragraph.font.size = Pt(12)
-    paragraph.font.color.rgb = MUTED
+def add_card(slide, x, y, w, h, title, lines, color=ACCENT, title_size=14, text_size=12):
+    card = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(x), Inches(y), Inches(w), Inches(h))
+    card.fill.solid()
+    card.fill.fore_color.rgb = PANEL
+    card.line.color.rgb = PANEL_LIGHT
+    card.shadow.inherit = False
+
+    title_box = slide.shapes.add_textbox(Inches(x + 0.22), Inches(y + 0.14), Inches(w - 0.44), Inches(0.4))
+    title_frame = title_box.text_frame
+    title_frame.word_wrap = True
+    title_frame.text = title
+    title_frame.paragraphs[0].font.size = Pt(title_size)
+    title_frame.paragraphs[0].font.bold = True
+    title_frame.paragraphs[0].font.color.rgb = color
+
+    body_box = slide.shapes.add_textbox(Inches(x + 0.22), Inches(y + 0.56), Inches(w - 0.44), Inches(h - 0.7))
+    body_frame = body_box.text_frame
+    body_frame.word_wrap = True
+    for index, line in enumerate(lines):
+        paragraph = body_frame.paragraphs[0] if index == 0 else body_frame.add_paragraph()
+        paragraph.text = line
+        paragraph.font.size = Pt(text_size)
+        paragraph.font.color.rgb = TEXT
+        paragraph.space_after = Pt(5)
+
+
+def add_code_panel(slide, lines, top=1.55, left=0.92, width=11.5, height=3.6):
+    panel = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(left), Inches(top), Inches(width), Inches(height))
+    panel.fill.solid()
+    panel.fill.fore_color.rgb = RGBColor(0x10, 0x19, 0x2C)
+    panel.line.color.rgb = PANEL_LIGHT
+    panel.shadow.inherit = False
+
+    box = slide.shapes.add_textbox(Inches(left + 0.3), Inches(top + 0.2), Inches(width - 0.6), Inches(height - 0.4))
+    frame = box.text_frame
+    frame.word_wrap = True
+    for index, line in enumerate(lines):
+        paragraph = frame.paragraphs[0] if index == 0 else frame.add_paragraph()
+        paragraph.text = line if line else " "
+        paragraph.font.name = "Consolas"
+        paragraph.font.size = Pt(13)
+        paragraph.font.color.rgb = RGBColor(0xC9, 0xD6, 0xE8)
+        paragraph.space_after = Pt(3)
 
 
 def build(path: Path):
@@ -64,193 +110,210 @@ def build(path: Path):
     prs.slide_width = Inches(13.333)
     prs.slide_height = Inches(7.5)
 
-    slide = add_slide(prs, "")
-    title_box = slide.shapes.add_textbox(Inches(0.9), Inches(2.3), Inches(11.5), Inches(1.5))
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    bg = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, 0, 0, prs.slide_width, prs.slide_height)
+    bg.fill.solid()
+    bg.fill.fore_color.rgb = BG
+    bg.line.fill.background()
+    glow = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(0.9), Inches(2.28), Inches(0.2), Inches(1.4))
+    glow.fill.solid()
+    glow.fill.fore_color.rgb = ACCENT
+    glow.line.fill.background()
+    title_box = slide.shapes.add_textbox(Inches(1.3), Inches(2.3), Inches(11), Inches(1.3))
     title_frame = title_box.text_frame
-    title_frame.text = "人脸颜值数据洞察"
-    title_frame.paragraphs[0].font.size = Pt(54)
+    title_frame.text = "人脸颜值数据分析系统"
+    title_frame.paragraphs[0].font.size = Pt(48)
     title_frame.paragraphs[0].font.bold = True
     title_frame.paragraphs[0].font.color.rgb = TEXT
-
-    sub_box = slide.shapes.add_textbox(Inches(0.95), Inches(3.55), Inches(11), Inches(1.2))
+    sub_box = slide.shapes.add_textbox(Inches(1.34), Inches(3.5), Inches(11), Inches(0.6))
     sub_frame = sub_box.text_frame
-    sub_frame.text = "icrawler · 百度智能云 · SQLite · pyecharts · tkinter"
-    sub_frame.paragraphs[0].font.size = Pt(22)
+    sub_frame.text = "icrawler 爬取 · 百度智能云人脸检测 · SQLite 留存 · pyecharts 大屏 · tkinter 桌面端"
+    sub_frame.paragraphs[0].font.size = Pt(18)
     sub_frame.paragraphs[0].font.color.rgb = ACCENT
-    add_footer(slide, "课堂项目拓展答辩")
 
-    slide = add_slide(prs, "项目介绍")
-    add_body(
+    slide = add_slide(prs, "项目介绍：一句话讲清楚这个项目")
+    add_bullets(
         slide,
         [
-            "一句话介绍：从图片抓取到人脸分析，再到历史数据洞察的一体化桌面工具。",
-            "输入关键词，自动用 icrawler 从 Bing 抓取图片。",
-            "调用百度智能云人脸检测，解析 age、expression、beauty 字段。",
-            "把每个关键词的检测统计写入 SQLite，形成可追溯数据资产。",
-            "用 pyecharts 生成分数柱状图与历史数据大屏。",
-        ],
-    )
-    add_footer(slide, "课堂内容保留：爬虫 + 人脸检测 + 图表")
-
-    slide = add_slide(prs, "功能亮点")
-    add_body(
-        slide,
-        [
-            "· tkinter 桌面界面，后台线程执行，进度条和运行日志实时刷新。",
-            "· 本地图片文件夹分析模式，爬虫不可用时仍能演示核心能力。",
-            "· 百度返回异常分类处理：无人脸、图片超限、密钥或权限问题给出提示。",
-            "· 修复了课堂笔记中的除零 bug：全无人脸时平均分保存为 NULL。",
-            "· 历史记录表、CSV 导出、最新图表自动打开。",
-            "· 大屏新增颜值仪表盘、分数雷达、环形占比、渐变面积趋势图。",
+            "人脸颜值数据分析系统是一个从数据采集到智能分析再到可视化洞察的一体化桌面工具。",
+            "输入一个关键词，程序自动完成：爬取图片 → 百度人脸检测 → 颜值打分 → 入库留存 → 生成可视化报告。",
+            "课堂要求的三大核心全部保留：爬虫 icrawler、人脸检测百度智能云、图表 pyecharts。",
+            "在课堂项目之上，我们拓展了桌面界面、三码在线配置、本地图片兜底、历史数据大屏、CSV 导出与自动打包。",
         ],
         size=20,
     )
-    add_footer(slide, "稳定演示优先：现场断网也有本地兜底")
+    add_card(slide, 0.92, 5.0, 3.6, 1.6, "数据从哪来", ["icrawler 多线程图片爬虫", "支持本地图片文件夹兜底"], BLUE)
+    add_card(slide, 4.86, 5.0, 3.6, 1.6, "智能在哪", ["百度 AipFace 人脸检测", "beauty 分数换算 1-10 分段"], ACCENT)
+    add_card(slide, 8.82, 5.0, 3.6, 1.6, "价值在哪", ["SQLite 历史可追溯", "多维图表一眼看结论"], YELLOW)
+    add_footer(slide, "① 项目介绍和展示")
 
-    slide = add_slide(prs, "技术架构")
-    add_body(
-        slide,
+    slide = add_slide(prs, "项目展示：录制一段 60-90 秒的演示视频")
+    video = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(0.92), Inches(1.6), Inches(6.4), Inches(4.9))
+    video.fill.solid()
+    video.fill.fore_color.rgb = RGBColor(0x10, 0x19, 0x2C)
+    video.line.color.rgb = ACCENT
+    video.shadow.inherit = False
+    vtext = video.text_frame
+    vtext.word_wrap = True
+    vtext.text = "▶  演示视频占位区"
+    vtext.paragraphs[0].font.size = Pt(24)
+    vtext.paragraphs[0].font.bold = True
+    vtext.paragraphs[0].font.color.rgb = ACCENT
+    vtext.paragraphs[0].alignment = 1
+    for line in ["", "把录制好的 mp4 拖进这个区域即可", "插入方法：插入 → 视频 → 此设备"]:
+        paragraph = vtext.add_paragraph()
+        paragraph.text = line
+        paragraph.font.size = Pt(13)
+        paragraph.font.color.rgb = MUTED
+        paragraph.alignment = 1
+    add_card(
+        slide, 7.7, 1.6, 4.7, 4.9, "视频录制脚本（照着录就行）",
         [
-            "数据采集层：icrawler BingImageCrawler，多线程下载图片。",
-            "算法服务层：baidu-aip AipFace.detect，Base64 上传，返回 JSON。",
-            "数据存储层：SQLite beauty_analysis 表，建表、插入、查询复用课堂知识。",
-            "可视化层：pyecharts Bar / Line / Pie / Page，导出交互式 HTML。",
-            "表现层：tkinter 主界面 + threading 后台任务 + queue 更新 UI。",
+            "1. 双击“人脸颜值数据分析系统”，首次进入右上角“三码配置”。",
+            "2. 输入 APP_ID / API_KEY / SECRET_KEY，点击保存并验证。",
+            "3. 输入关键词“周杰伦”，点击开始分析。",
+            "4. 展示进度条、日志滚动与状态徽章变化。",
+            "5. 自动打开三联报告：颜值仪表盘 / 彩色柱状分布 / 环形占比。",
+            "6. 再分析一个关键词，生成并拖动展示历史数据大屏。",
+            "7. 最后点导出历史 CSV，展示表格数据。",
+            "",
+            "录制方式：Win+G 或 OBS，建议 60-90 秒，配一段简短解说。",
         ],
-        size=20,
+        BLUE, title_size=15, text_size=12,
     )
-    add_footer(slide, "模块边界清晰，便于后续扩展")
+    add_footer(slide, "① 项目介绍和展示")
 
-    slide = add_slide(prs, "关键代码：数据采集")
-    add_body(
+    slide = add_slide(prs, "关键代码讲解 1：数据采集与清洗")
+    add_code_panel(
         slide,
         [
             "folder = root_dir / safe_folder_name(keyword)",
-            "if folder.exists(): shutil.rmtree(folder)",
-            "folder.mkdir(parents=True, exist_ok=True)",
-            "crawler = BingImageCrawler(",
-            "    feeder_threads=2, parser_threads=4, downloader_threads=8,",
-            "    storage={'root_dir': str(folder)})",
+            "if folder.exists(): shutil.rmtree(folder)   # 清掉旧图，防止统计污染",
+            "crawler = BingImageCrawler(feeder_threads=2, parser_threads=4,",
+            "                           downloader_threads=8, storage={'root_dir': str(folder)})",
             "crawler.crawl(keyword=keyword, max_num=max_num)",
-            "    ",
-            "亮点：每次分析前清理旧图，避免历史缓存污染统计结果。",
+            "",
+            "VALID_IMAGE_SUFFIXES = {'.jpg', '.jpeg', '.png', '.bmp'}",
         ],
-        size=18,
     )
-    add_footer(slide, "face_insight/crawler.py")
-
-    slide = add_slide(prs, "关键代码：百度人脸检测")
-    add_body(
+    add_bullets(
         slide,
         [
-            "content = base64.b64encode(path.read_bytes()).decode('utf-8')",
+            "讲解点 1：每次分析前清空关键词目录，保证统计口径干净。",
+            "讲解点 2：feeder/parser/downloader 三类线程分工，体现 icrawler 的并发设计。",
+            "讲解点 3：只接受四种常见图片格式，后续无效文件直接过滤。",
+        ],
+        top=5.35, height=1.5, size=15,
+    )
+    add_footer(slide, "② 关键代码讲解 · face_insight/crawler.py")
+
+    slide = add_slide(prs, "关键代码讲解 2：百度检测与限流自愈")
+    add_code_panel(
+        slide,
+        [
             "options = {'face_field': 'age,expression,beauty'}",
-            "response = self.client.detect(content, 'BASE64', options)",
-            "faces = response.get('result', {}).get('face_list', [])",
-            "beauty = float(faces[0].get('beauty', 0))",
-            "return min(10, max(1, int(beauty // 10) + 1))",
-            "    ",
-            "亮点：0 表示无人脸，1-10 表示颜值分段；错误码单独处理，不会直接崩掉界面。",
+            "response = self.client.detect(base64_img, 'BASE64', options)",
+            "",
+            "while error_code == 18 and retries < max_retries:   # QPS 限流",
+            "    time.sleep(1.2 * (retries + 1))                 # 1.2s → 2.4s → 3.6s → 4.8s",
+            "    response = self.detect(path)",
+            "    retries += 1",
+            "",
+            "return min(10, max(1, int(beauty // 10) + 1))       # 分数钳制，防止越界",
         ],
-        size=18,
     )
-    add_footer(slide, "face_insight/face_analysis.py")
-
-    slide = add_slide(prs, "关键代码：数据库与除零修复")
-    add_body(
+    add_bullets(
         slide,
         [
-            "face_count = sum(score_counts[1:])",
-            "if face_count == 0:",
-            "    return None",
-            "total = sum(score * count for score, count in enumerate(score_counts))",
-            "return round(total / face_count, 2)",
-            "    ",
-            "表设计：keyword、count_has_face、count_no_face、num_one-num_ten、beauty_avg。",
-            "全部使用参数化 SQL，避免拼接字符串带来的风险。",
+            "讲解点 1：Base64 上传 + face_field 按需拉取字段，减少无效数据。",
+            "讲解点 2：错误码 18 不再报错终止，而是自动退避重试，20 张图全程不中断。",
+            "讲解点 3：请求间隔放宽到 1.1 秒，主动适配免费额度的 QPS 限制。",
         ],
-        size=18,
+        top=5.35, height=1.5, size=15,
     )
-    add_footer(slide, "face_insight/storage.py")
+    add_footer(slide, "② 关键代码讲解 · face_insight/face_analysis.py")
 
-    slide = add_slide(prs, "关键代码：可视化")
-    add_body(
+    slide = add_slide(prs, "关键代码讲解 3：数据库设计与除零修复")
+    add_code_panel(
         slide,
         [
-            "Bar().add_xaxis(SCORE_LABELS).add_yaxis('图片数量', items)",
-            "Pie().add('占比', data, radius=['38%', '68%'])",
+            "def calculate_average(score_counts):",
+            "    face_count = sum(score_counts[1:])",
+            "    if face_count == 0:",
+            "        return None                      # 课堂笔记里的除零 bug 在这里修复",
+            "    total = sum(score * count for score, count in enumerate(score_counts))",
+            "    return round(total / face_count, 2)",
+            "",
+            "INSERT INTO beauty_analysis(...) VALUES(?, ?, ...)   # 参数化 SQL",
+        ],
+    )
+    add_bullets(
+        slide,
+        [
+            "表结构：keyword、count_has_face、count_no_face、num_one-num_ten、beauty_avg。",
+            "平均分只按有人脸图片计算；全无人脸时存 NULL，图表显示“无有效人脸”。",
+            "pytest 覆盖分数聚合与除零分支，三个用例全部通过。",
+        ],
+        top=5.35, height=1.5, size=15,
+    )
+    add_footer(slide, "② 关键代码讲解 · face_insight/storage.py")
+
+    slide = add_slide(prs, "关键代码讲解 4：多维可视化与界面线程")
+    add_code_panel(
+        slide,
+        [
             "Gauge().add('颜值指数', [('得分', value)], min_=0, max_=10)",
-            "Page(layout=Page.DraggablePageLayout)",
-            "page.add(build_score_chart(...))",
-            "page.add(build_average_trend(records))",
-            "page.add(build_face_distribution(records))",
-            "page.add(build_keyword_comparison(records))",
-            "page.render('exports/人脸检测历史数据大屏.html')",
+            "Pie().add('占比', data, radius=['38%', '68%'])",
+            "Line().add_yaxis('平均分', values, areastyle_opts=渐变面积)",
+            "Radar().add_schema(schema=indicators)",
+            "Page(layout=Page.DraggablePageLayout).render('人脸检测历史数据大屏.html')",
+            "",
+            "threading.Thread(target=self._analysis_worker, daemon=True).start()",
+            "self.after(120, self._poll_worker_events)      # queue 消息驱动 UI 刷新",
         ],
-        size=18,
     )
-    add_footer(slide, "face_insight/charts.py")
-
-    slide = add_slide(prs, "现场演示")
-    add_body(
+    add_bullets(
         slide,
         [
-            "1. 输入关键词，例如“学生证件照”，点击开始分析。",
-            "2. 观察爬取、百度检测、数据库保存、图表生成四个阶段。",
-            "3. 打开最新柱状图，说明无人脸和 1-10 分分布。",
-            "4. 连续分析两个关键词后打开历史大屏。",
-            "5. 展示颜值仪表盘、趋势图、雷达图、分布占比和 CSV 导出。",
-            "备注：建议录制 60-90 秒演示视频作为备份。",
+            "报告页三联组合：仪表盘 + 彩色柱状 + 环形占比；大屏五类图表自由拖拽。",
+            "Tkinter 主线程只画界面，爬取与检测放子线程，queue + after 轮询保证不卡死。",
         ],
-        size=20,
+        top=5.35, height=1.5, size=15,
     )
-    add_footer(slide, "演示脚本详见 docs/演示讲稿.md")
+    add_footer(slide, "② 关键代码讲解 · face_insight/charts.py · app.py")
 
-    slide = add_slide(prs, "问题排查")
-    add_body(
-        slide,
-        [
-            "· 有人脸数量为 0 时除法报错：改为返回 NULL，并在图表中显示“无有效人脸”。",
-            "· 爬虫下载的不是有效图片：只分析 jpg/jpeg/png/bmp，其他格式跳过。",
-            "· 百度返回无人脸：222202、222203、222204 等错误码归类为 score=0。",
-            "· 图片超过 10MB：提前拦截，并提示文件名和限制。",
-            "· 爬虫受网络或站点策略影响：增加本地文件夹分析模式。",
-            "· GUI 卡死：爬取和检测放入子线程，Tkinter 主线程只负责渲染。",
-        ],
-        size=20,
-    )
-    add_footer(slide, "每个问题都有定位过程、处理方案和验证方式")
-
-    slide = add_slide(prs, "项目价值与延展")
-    add_body(
-        slide,
-        [
-            "课堂项目：完成了一组工具库的串联调用。",
-            "拓展项目：变成有界面、有状态、有兜底、有历史、可复盘的小型数据产品。",
-            "后续可延展：增加用户登录与权限、人脸分组统计、定时任务、多人协作看板。",
-            "也可以把爬虫替换为公开数据集，把人脸服务替换为其他 AI 能力。",
-        ],
-        size=20,
-    )
-    add_footer(slide, "从作业到产品思维")
+    slide = add_slide(prs, "问题排查与思路：从报错到修复")
+    add_card(slide, 0.92, 1.6, 5.6, 2.4, "除零崩溃（课堂已知 bug）",
+             ["定位：有人脸数量为 0 时 total/count 直接除零。", "方案：calculate_average 返回 None，数据库存 NULL。",
+              "验证：pytest 用例 test_average_with_no_face 通过。"], YELLOW)
+    add_card(slide, 6.82, 1.6, 5.6, 2.4, "QPS 限流（错误码 18）",
+             ["定位：0.35s/张 超出免费额度每秒 1 次限制。", "方案：间隔放宽 1.1s + 递增退避重试 4 次。",
+              "验证：20 张图连续分析不再弹错。"], ORANGE)
+    add_card(slide, 0.92, 4.2, 5.6, 2.4, "IAM 认证失败（错误码 14）",
+             ["定位：三码失效或人脸服务未开通。", "方案：控制台核对三码，在程序 UI 内保存并验证。",
+              "验证：状态变为“三码已配置”后可直接分析。"], BLUE)
+    add_card(slide, 6.82, 4.2, 5.6, 2.4, "界面卡死与脏数据",
+             ["定位：爬取阻塞主线程；旧图混入统计。", "方案：子线程 + queue 消息队列；下载前清空目录。",
+              "附加：10MB 超限拦截、四种格式白名单。"], ACCENT)
+    add_footer(slide, "③ 问题排查与思路")
 
     slide = add_slide(prs, "感谢致辞")
-    add_body(
+    add_bullets(
         slide,
         [
-            "感谢老师课堂讲解和项目指导，让我们从零走到了完整作品。",
-            "感谢小组成员分工协作，一起排查了爬虫、接口和数据库问题。",
-            "感谢百度智能云与开源社区提供的文档和示例。",
-            "我们也会继续保持对数据和 AI 的好奇心，把这些方法用到更有价值的问题上。",
-            "欢迎各位老师同学提问！",
+            "感谢老师在课堂上的细致讲解，让我们把一串陌生的库串成了完整作品。",
+            "感谢小组成员分工协作，从爬虫被限流到除零修复，每个问题都是一起啃下来的。",
+            "感谢百度智能云和开源社区提供的文档与示例，让课堂知识有了落地的抓手。",
+            "这个项目教会我们：数据产品不只是“能跑”，还要稳得住、看得清、可复盘。",
+            "我们会带着这份好奇心继续往前走，欢迎各位老师同学提问！",
         ],
-        size=22,
+        size=20,
     )
-    add_footer(slide, "Thank You")
+    add_footer(slide, "④ 感谢致辞")
 
     path.parent.mkdir(parents=True, exist_ok=True)
     prs.save(path)
 
 
 if __name__ == "__main__":
-    build(Path("PPT/人脸颜值数据洞察-答辩.pptx"))
+    build(Path("PPT/人脸颜值数据分析系统-答辩.pptx"))

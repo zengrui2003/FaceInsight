@@ -298,7 +298,7 @@ def save_history_screen(records: list[AnalysisRecord], output_path: str | Path) 
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     overall_avg = calculate_history_average(records)
-    page = Page(page_title="人脸颜值数据洞察大屏", layout=Page.DraggablePageLayout)
+    page = Page(page_title="人脸颜值数据分析系统大屏", layout=Page.DraggablePageLayout)
     page.add(
         build_gauge(overall_avg),
         build_average_trend(records),

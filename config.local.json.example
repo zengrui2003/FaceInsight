@@ -1,5 +1,6 @@
 {
-  "app_id": "your_app_id",
-  "api_key": "your_api_key",
-  "secret_key": "your_secret_key"
+  "schema_version": 2,
+  "app_id": "",
+  "api_key": "",
+  "secret_key": ""
 }

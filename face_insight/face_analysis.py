@@ -70,6 +70,21 @@ class FaceAnalyzer:
         return scores
 
 
+def verify_baidu_config(config: BaiduConfig) -> None:
+    """验证三码能否成功换取百度访问令牌。"""
+    client = AipFace(config.app_id, config.api_key, config.secret_key)
+    try:
+        response = client._auth()
+    except Exception as exc:
+        raise RuntimeError(f"无法连接百度智能云：{exc}") from exc
+
+    if not isinstance(response, dict) or not response.get("access_token"):
+        code = response.get("error_code", "") if isinstance(response, dict) else ""
+        message = response.get("error_msg", "认证失败") if isinstance(response, dict) else "认证失败"
+        prefix = f"三码验证失败（{code}）" if code else "三码验证失败"
+        raise RuntimeError(f"{prefix}：{message}")
+
+
 def aggregate_scores(scores: list[int]) -> list[int]:
     """score_counts[0] 是无人脸数量，score_counts[1] 到 [10] 是 1 到 10 分数量。"""
     score_counts = [0] * 11
