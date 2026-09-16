@@ -1,0 +1,5 @@
+icrawler>=0.6.7
+baidu-aip>=4.16.6
+chardet>=5.0.0
+pyecharts>=2.0.0
+Pillow>=10.0.0
